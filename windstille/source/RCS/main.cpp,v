@@ -1,0 +1,253 @@
+head	1.1;
+access;
+symbols;
+locks
+	ingo:1.1; strict;
+comment	@// @;
+
+
+1.1
+date	2006.09.04.16.09.54;	author ingo;	state Exp;
+branches;
+next	;
+
+
+desc
+@@
+
+
+1.1
+log
+@Initial revision
+@
+text
+@
+// Simple console print demo
+// -- dovoto
+
+#include <nds.h>
+#include <nds/arm9/console.h> //basic print funcionality
+#include <stdio.h>
+#include <nds/arm9/sound.h>             // sound functions
+#include <nds/arm9/video.h>             // sound functions
+
+//makefile automaticly makes a header file for access
+//to the binary data in any file ending in .bin that is in
+//the data folder.  It also links in that data to your project
+
+#include "drunkenlogo_bin.h"
+#include "health_bin.h"
+#include "weapon_bin.h"
+#include "comm_bin.h"
+#include "map_bin.h"
+#include "topscreen_bin.h"
+#include "blaster_bin.h"
+
+#include "topscreen_img_bin.h"
+#include "topscreen_pal_bin.h"
+
+int main(void)
+{
+  // irqs are nice
+  irqInit();
+  irqEnable(IRQ_VBLANK);
+
+  // set the mode for 2 text layers and two extended background layers
+  videoSetMode(MODE_5_2D | DISPLAY_BG3_ACTIVE);// | DISPLAY_BG2_ACTIVE);
+
+  // set the sub background up for text display (we could just print to one
+  // of the main display text backgrounds just as easily
+  videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE); //| DISPLAY_BG2_ACTIVE);
+
+  // set the first bank as background memory and the third as sub background memory
+  // B and D are not used (if you want a bitmap greater than 256x256 you will need more
+  // memory so another vram bank must be used and mapped consecutivly
+  vramSetMainBanks(VRAM_A_MAIN_BG_0x6000000, VRAM_B_LCD, //VRAM_B_MAIN_BG_0x6020000,
+                   VRAM_C_SUB_BG, VRAM_D_LCD);
+  
+  for(int i = 0; i < 256; ++i) 
+    if (i % 2)
+      BG_PALETTE_SUB[i] = RGB15(i/4, i/4, i/8);
+    else
+      BG_PALETTE_SUB[i] = RGB15(i/4, i/4, i/8) & ~BIT(15);
+
+  // set up our bitmap background
+  BG3_CR     = BG_BMP8_512x256 | BG_WRAP_ON;
+  //BG2_CR     = BG_BMP8_256x256 | BG_BMP_BASE(8);
+  
+  SUB_BG2_CR = BG_BMP8_256x256 | BG_BMP_BASE(4);
+  SUB_BG3_CR = BG_BMP8_256x256 | BG_WRAP_ON;
+
+  // these are rotation backgrounds so you must set the rotation attributes:
+  // these are fixed point numbers with the low 8 bits the fractional part
+  // this basicaly gives it a 1:1 translation in x and y so you get a nice flat bitmap
+  BG3_XDX = 1 << 8;
+  BG3_XDY = 0;
+  BG3_YDX = 0;
+  BG3_YDY = 1 << 8;
+
+  BG2_XDX = 1 << 8;
+  BG2_XDY = 0;
+  BG2_YDX = 0;
+  BG2_YDY = 1 << 8;
+
+  SUB_BG3_XDX = 1 << 8;
+  SUB_BG3_XDY = 0;
+  SUB_BG3_YDX = 0;
+  SUB_BG3_YDY = 1 << 8;
+
+  SUB_BG2_XDX = 1 << 8;
+  SUB_BG2_XDY = 0;
+  SUB_BG2_YDX = 0;
+  SUB_BG2_YDY = 1 << 8;
+
+  //our bitmap looks a bit better if we center it so scroll down (256 - 192) / 2
+  BG3_CX = 0;
+  BG3_CY = 0;
+
+  BG2_CX = 0;
+  BG2_CY = 0;
+
+  SUB_BG3_CX = 0;
+  SUB_BG3_CY = 0; //32 << 8;
+
+  SUB_BG2_CX = 0;//2000;
+  SUB_BG2_CY = 0;//2000; //32 << 8;
+
+  // what we would like to do is this:
+  //
+  //  dmaCopy(drunkenlogo, BG_GFX, 256*256*2);
+  //
+  // but gfx2gba does not care much about an alpha bit so you will get a nice black
+  // image if you try the above...instead we must copy it manualy and set the alpha bit
+  // as we go
+  //  for(int i = 0; i < 256*192; i += 1)
+    //    {
+      //      ((u16*)BG_BMP_RAM(8))[i] = ((u16*)health_bin)[i] | BIT(15);
+      //    }
+
+  /*  for(int i = 0; i < 256*256; i += 2)
+    {
+      ((u16*)BG_BMP_RAM(24))[i] = ((u16*)drunkenlogo_bin)[i] | BIT(15);
+      }*/
+
+  //for(int i = 0; i < 512*256; i++)
+    //    BG_GFX[i] = ((i+i/256) % 256) | (((i+i/256) % 256) << 8); //((u16*)topscreen_img_bin)[i];
+
+  for(int i = 0; i < 512*256; i++)
+    //BG_GFX[i] = ((i+i/256) % 256) | (((i+i/256) % 256) << 8); 
+    BG_GFX[i] = ((u16*)topscreen_img_bin)[i];
+
+  for(int i = 0; i < 256; ++i)
+    //BG_PALETTE[i] = RGB15(i/8, i/8, i/8);
+    BG_PALETTE[i] = ((u16*)topscreen_pal_bin)[i];
+
+  TransferSoundData blaster = {
+    blaster_bin,            /* Sample address */
+    blaster_bin_size,       /* Sample length */
+    11025,                  /* Sample rate */
+    127,                    /* Volume */
+    64,                     /* panning */
+    1                       /* format */
+  };
+        
+  int x = 0;
+  int y = 0;
+  int oldx = x;
+  int oldy = y;
+  bool drag = false;
+  touchPosition touch_down = touchReadXY();
+  while(1) 
+    {
+      swiWaitForVBlank();
+
+      // read the button states
+      scanKeys();
+      touchPosition touch = touchReadXY();
+
+      int pressed = keysDown();	// buttons pressed this loop
+      int held = keysHeld();		// buttons currently held
+
+      if (held & KEY_LEFT)
+        x += 300;
+      else if (held & KEY_RIGHT)
+        x -= 300;
+
+      if (held & KEY_DOWN)
+        y -= 300;
+      else if (held & KEY_UP)
+        y += 300;
+
+      if ((held & KEY_TOUCH)  && drag)
+        {
+          x = oldx + (touch_down.x - touch.x)*50;
+          y = oldy + (touch_down.y - touch.y)*50;
+
+          BG3_CX  = x;
+          BG3_CY  = y;
+        }
+
+      if (!(held & KEY_TOUCH))
+        drag = false;
+
+      BG3_CX  = x;
+      BG3_CY  = y;
+
+      //2_CX  = -x;
+      //2_CY  = -y;
+
+      SUB_BG3_CX  = x;
+      SUB_BG3_CY  = y;
+      
+      SUB_BG2_CX  = -x;
+      SUB_BG2_CY  = -y;
+
+      if (pressed & KEY_TOUCH)
+        {
+          if (touch.px < 48 || touch.px > 256 - 48)
+            {
+              if (touch.px < 48)
+                {
+                  blaster.pan = 255;
+                }
+              else
+                {
+                  blaster.pan = 255;
+                }
+
+              const u8* picture = 0;
+              
+              if (touch.py < 48)
+                picture = map_bin;
+              else if (touch.py >= 48 && touch.py < 48*2)
+                picture = health_bin;
+              else if (touch.py >= 2*48 && touch.py < 48*3)
+                picture = comm_bin;
+              else if (touch.py >= 3*48 && touch.py < 48*4)
+                picture = weapon_bin;
+              else
+                picture = weapon_bin;
+
+              if (picture)
+                {
+                  for(int i = 0; i < 256*192; ++i)
+                    ((u16*)BG_BMP_RAM_SUB(0))[i] = picture[4*i] | (picture[4*i+1]<<8);
+                  
+                  playSound(&blaster);
+                }
+            }
+          else
+            {
+              touch_down = touch;
+              oldx = x;
+              oldy = y;
+              drag = true;
+            }
+        }
+    }
+
+  return 0;
+}
+ 
+/* EOF */
+@
