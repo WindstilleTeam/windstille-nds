@@ -2,6 +2,7 @@
 // Simple console print demo
 // -- dovoto
 
+#include <algorithm>
 #include <nds.h>
 #include <nds/arm9/console.h> //basic print funcionality
 #include <stdio.h>
@@ -83,6 +84,12 @@
 #include "walk_frame14_pal_bin.h"
 #include "walk_frame15_pal_bin.h"
 
+
+#include "doorbg_img_bin.h"
+#include "doorbg_pal_bin.h"
+
+#include "doorfg_img_bin.h"
+#include "doorfg_pal_bin.h"
 
 #include "topscreen_img_bin.h"
 #include "topscreen_pal_bin.h"
@@ -171,6 +178,85 @@ void titlescreen()
           if (count > 0)
             break;
         }
+    }
+}
+
+void doorminigame()
+{
+  videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE | DISPLAY_BG2_ACTIVE);  
+
+  vramSetMainBanks(VRAM_A_MAIN_BG_0x6000000, VRAM_B_MAIN_SPRITE, //VRAM_B_MAIN_BG_0x6020000,
+                   VRAM_C_SUB_BG, VRAM_D_MAIN_BG_0x6020000);
+
+  SUB_BG2_CR = BG_BMP8_256x256 | BG_BMP_BASE(4);
+  SUB_BG3_CR = BG_BMP8_256x256;
+
+  SUB_BG3_XDX = 1 << 8;
+  SUB_BG3_XDY = 0;
+  SUB_BG3_YDX = 0;
+  SUB_BG3_YDY = 1 << 8;
+
+  SUB_BG2_XDX = 1 << 8;
+  SUB_BG2_XDY = 0;
+  SUB_BG2_YDX = 0;
+  SUB_BG2_YDY = 1 << 8;
+
+  SUB_BG3_CX = 0;
+  SUB_BG3_CY = 0; //32 << 8;
+
+  SUB_BG2_CX = 0;//2000;
+  SUB_BG2_CY = 0;//2000; //32 << 8;
+
+  for(int i = 0; i < 256; ++i)
+    BG_PALETTE_SUB[i] = ((u16*)doorbg_pal_bin)[i];
+
+  for(int i = 0; i < 256*256/2; ++i)
+    ((u16*)BG_BMP_RAM_SUB(0))[i] = ((u16*)doorbg_img_bin)[i];
+
+  for(int i = 0; i < 256*256/2; ++i)
+    ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)doorfg_img_bin)[i];
+
+  bool dragging = false;
+  touchPosition touch_down = touchReadXY();;
+  int door_pos = 0;
+  int old_pos = 0;
+  while(1) 
+    {
+      swiWaitForVBlank();
+      scanKeys();    
+
+      int pressed = keysDown();
+      int held    = keysHeld();
+      if (pressed & KEY_TOUCH)
+        {
+          touch_down = touchReadXY();
+          
+          if (touch_down.px > 64 && touch_down.py > 88 &&
+              touch_down.px < door_pos + 64+16 && touch_down.py < door_pos + 88 + 32)
+            {
+              dragging = true;
+              old_pos = door_pos;
+            }
+        }
+
+      if ((held & KEY_TOUCH) && dragging == true)
+        {
+          touchPosition cur = touchReadXY();
+          
+          //int scrollpos = abs(std::max(std::min(0, (touch_down.px - cur.px)), -128));
+  
+          door_pos = std::min(std::max(0, old_pos + (cur.px - touch_down.px)), 128);
+        }
+      else
+        {
+          dragging = false;
+        }
+
+      SUB_BG2_CX = -door_pos << 8;
+      if (door_pos < 4)
+        SUB_BG2_CY = door_pos << 8;
+      else
+        SUB_BG2_CY = 4 << 8;
     }
 }
 
@@ -547,8 +633,9 @@ int main(void)
   irqInit();
   irqEnable(IRQ_VBLANK);
 
-  titlescreen();
-  gamescreen();
+  //titlescreen();
+  //gamescreen();
+  doorminigame();
 
   return 0;
 }
