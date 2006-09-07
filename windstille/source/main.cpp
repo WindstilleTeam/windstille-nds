@@ -12,20 +12,42 @@
 //to the binary data in any file ending in .bin that is in
 //the data folder.  It also links in that data to your project
 
-#include "drunkenlogo_bin.h"
-
-#include "health_img_bin.h"
-#include "weapon_img_bin.h"
-#include "comm_img_bin.h"
 #include "map_img_bin.h"
+#include "health_img_bin.h"
+#include "log_img_bin.h"
+#include "debug_img_bin.h"
+
+#include "items_img_bin.h"
+#include "scan_img_bin.h"
+#include "comm_img_bin.h"
+#include "weapon_img_bin.h"
+
+#include "submap_img_bin.h"
+#include "subhealth_img_bin.h"
+#include "sublog_img_bin.h"
+#include "subdebug_img_bin.h"
+
+#include "subitems_img_bin.h"
+#include "subscan_img_bin.h"
+#include "subcomm_img_bin.h"
+#include "subweapon_img_bin.h"
+
 #include "realmap_img_bin.h"
 #include "subscreen_pal_bin.h"
 
 #include "sprite_img_bin.h"
 #include "sprite_pal_bin.h"
+
 #include "topscreen_bin.h"
 #include "blaster_bin.h"
 #include "numbers_img_bin.h"
+#include "numbers_pal_bin.h"
+
+#include "titlescreen_pal_bin.h"
+#include "titlescreen_img_bin.h"
+
+#include "subtitlescreen_pal_bin.h"
+#include "subtitlescreen_img_bin.h"
 
 #include "walk_frame00_img_bin.h"
 #include "walk_frame01_img_bin.h"
@@ -94,17 +116,72 @@ void updateOAM(void)
   dmaCopy(sprites, OAM, 128 * sizeof(SpriteEntry));
 }
 
-int main(void)
+void titlescreen()
 {
-  // irqs are nice
-  irqInit();
-  irqEnable(IRQ_VBLANK);
+  videoSetMode(MODE_5_2D | DISPLAY_BG3_ACTIVE);
+  videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
 
+  vramSetMainBanks(VRAM_A_MAIN_BG_0x6000000, VRAM_B_LCD,
+                   VRAM_C_SUB_BG, VRAM_D_LCD); 
+
+  BG3_CR     = BG_BMP8_256x256 | BG_WRAP_ON;
+  SUB_BG3_CR = BG_BMP8_256x256 | BG_WRAP_ON;
+
+  // these are rotation backgrounds so you must set the rotation attributes:
+  // these are fixed point numbers with the low 8 bits the fractional part
+  // this basicaly gives it a 1:1 translation in x and y so you get a nice flat bitmap
+  BG3_XDX = 1 << 8;
+  BG3_XDY = 0;
+  BG3_YDX = 0;
+  BG3_YDY = 1 << 8;
+
+  SUB_BG3_XDX = 1 << 8;
+  SUB_BG3_XDY = 0;
+  SUB_BG3_YDX = 0;
+  SUB_BG3_YDY = 1 << 8;
+
+  BG3_CX = 0;
+  BG3_CY = 0;
+
+  SUB_BG3_CX = 0;
+  SUB_BG3_CY = 0;
+
+  for(int i = 0; i < 256*192; ++i)
+    BG_GFX[i] = ((u16*)titlescreen_img_bin)[i];
+  for(int i = 0; i < 256; ++i)
+    BG_PALETTE[i] = ((u16*)titlescreen_pal_bin)[i];
+
+  for(int i = 0; i < 256*192; ++i)
+    BG_GFX_SUB[i] = ((u16*)subtitlescreen_img_bin)[i];
+  for(int i = 0; i < 256; ++i)
+    BG_PALETTE_SUB[i] = ((u16*)subtitlescreen_pal_bin)[i];
+  
+  int count = 0;
+  while(1) 
+    {
+      swiWaitForVBlank();
+      scanKeys();    
+
+      int pressed = keysDown();
+      if (pressed & KEY_TOUCH)
+        {
+          //touchPosition touch_down = touchReadXY();
+          count += 1;
+
+          if (count > 0)
+            break;
+        }
+    }
+}
+
+void gamescreen()
+{
   // set the mode for 2 text layers and two extended background layers
   videoSetMode(MODE_5_2D |
-               DISPLAY_BG1_ACTIVE |
-               DISPLAY_BG3_ACTIVE | 
-               DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D_LAYOUT);
+               //DISPLAY_BG1_ACTIVE |
+               DISPLAY_BG3_ACTIVE |
+               DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D_LAYOUT
+               );
 
   // set the sub background up for text display (we could just print to one
   // of the main display text backgrounds just as easily
@@ -120,7 +197,7 @@ int main(void)
   BG3_CR     = BG_BMP8_512x256 | BG_WRAP_ON| BG_BMP_BASE(0);
   //BG2_CR     = BG_BMP8_256x256 | BG_BMP_BASE(8);
   
-  BG1_CR = BG_32x32 | BG_TILE_BASE(4) | BG_MAP_BASE(32) | BG_256_COLOR;
+  BG1_CR = BG_32x32 | BG_TILE_BASE(0) | BG_MAP_BASE(8) | BG_256_COLOR;
 
   SUB_BG2_CR = BG_BMP8_256x256 | BG_WRAP_ON | BG_BMP_BASE(4);
   SUB_BG3_CR = BG_BMP8_256x256 | BG_WRAP_ON;
@@ -166,6 +243,8 @@ int main(void)
 
   for(int i = 0; i < 256; ++i)
     BG_PALETTE[i] = ((u16*)topscreen_pal_bin)[i];
+  //for(int i = 0; i < 256; ++i)
+  //BG_PALETTE[i] = ((u16*)numbers_pal_bin)[i];
 
   for(int i = 0; i < 256; ++i)
     BG_PALETTE_SUB[i] = ((u16*)subscreen_pal_bin)[i];
@@ -187,8 +266,8 @@ int main(void)
         
   int x = 0;
   int y = 0;
-  int px = 150;
-  int py = 50;
+  int px = 128-32;
+  int py = 103;
   int oldx = x;
   int oldy = y;
   bool drag = false;
@@ -196,17 +275,16 @@ int main(void)
 
   initSprites();
   
-
   for(int i=0;i<256*256;i++)
     {
       SPRITE_GFX[i] = i % 256 | ((i % 256) << 8);
     }
 
-  for(int i = 0; i < 8*8*256/2; ++i)
-    ((u16*)BG_TILE_RAM(4))[i] = ((u16*)numbers_img_bin)[i];
+  //for(int i = 0; i < 8*8*256/2; ++i)
+  //    ((u16*)BG_TILE_RAM(0))[i] = ((u16*)numbers_img_bin)[i];
 
-  for(int i = 0; i < 32*32; ++i)
-    ((u16*)BG_MAP_RAM(32))[i] = i%256;
+  //for(int i = 0; i < 32*32; ++i)
+  //((u16*)BG_MAP_RAM(8))[i] = i%256;
 
   /*    for(int y=0;y<64; ++y)
         for(int x=0;x<32; ++x)
@@ -267,6 +345,9 @@ int main(void)
   int frame_index = 0;
   int sx = 0;
   //int sy = 0;
+  bool allow_scrolling_x = true;
+  bool allow_scrolling_y = true;
+  bool left = true;;
   while(1) 
     {
       swiWaitForVBlank();
@@ -274,12 +355,8 @@ int main(void)
       frame_index += 1;
       frame_index = frame_index % 80;
 
-      for(int i=0;i<64*32; ++i)
-        SPRITE_GFX[i] = ((u16*)frames[frame_index/5])[i];
       //SPRITE_GFX[i] = ((u16*)numbers_img_bin)[i];
-      
-      for(int i = 0; i < 256; ++i)
-        SPRITE_PALETTE[i] = ((u16*)pal_frames[frame_index/5])[i];
+
 
       // read the button states
       scanKeys();
@@ -288,20 +365,50 @@ int main(void)
       int pressed = keysDown();	// buttons pressed this loop
       int held = keysHeld();		// buttons currently held
 
-
-      sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | mod(py,512);
-      sprites[0].attribute[1] = ATTR1_SIZE_64 | mod(px,512);
+      
+      sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | mod(103,512);
+      sprites[0].attribute[1] = ATTR1_SIZE_64 | mod(128-32,512) | (left ? 0: ATTR1_FLIP_X);
       sprites[0].attribute[2] = 0;
+
+      if ((held & KEY_L) && (held & KEY_R))
+        swiSoftReset();
+
+      if ((pressed & KEY_LEFT) || (pressed & KEY_RIGHT))
+        {
+          frame_index = 0;
+        }
 
       if (held & KEY_LEFT)
         {
+          left = true;
           px -= 1;
           sprites[0].attribute[1] = sprites[0].attribute[1] & ~ATTR1_FLIP_X;
+
+          for(int i=0;i<64*32; ++i)
+            SPRITE_GFX[i] = ((u16*)frames[frame_index/5])[i];
+      
+          for(int i = 0; i < 256; ++i)
+            SPRITE_PALETTE[i] = ((u16*)pal_frames[frame_index/5])[i];
         }
       else if (held & KEY_RIGHT)
         {
+          left = false;
           px += 1;
           sprites[0].attribute[1] = sprites[0].attribute[1] | ATTR1_FLIP_X;
+
+          for(int i=0;i<64*32; ++i)
+            SPRITE_GFX[i] = ((u16*)frames[frame_index/5])[i];
+      
+          for(int i = 0; i < 256; ++i)
+            SPRITE_PALETTE[i] = ((u16*)pal_frames[frame_index/5])[i];
+        }
+      else
+        {
+          for(int i=0;i<64*32; ++i)
+            SPRITE_GFX[i] = ((u16*)frames[0])[i];
+      
+          for(int i = 0; i < 256; ++i)
+            SPRITE_PALETTE[i] = ((u16*)pal_frames[0])[i];
         }
 
       if (held & KEY_DOWN)
@@ -309,66 +416,121 @@ int main(void)
       else if (held & KEY_UP)
         py -= 1;
 
-      sx += 1;
+      sx = px;
+      //sx += 1;
 
       if ((held & KEY_TOUCH)  && drag)
         {
           x = oldx + (touch_down.px - touch.px);
           y = oldy + (touch_down.py - touch.py);
-
-          BG3_CX  = x*500 + sx<<8;
-          BG3_CY  = y*500;
         }
 
       if (!(held & KEY_TOUCH))
         drag = false;
 
-      BG3_CX  = x*500 + sx<<8;;
-      BG3_CY  = y*500;
+      BG3_CX  = x*500 + sx<<8 ;
+      BG3_CY  = y*500 + (32<<8);
 
       //2_CX  = -x;
       //2_CY  = -y;
 
-      //SUB_BG3_CX  = x<<8;
-      SUB_BG3_CY  = y<<8;
+      if (allow_scrolling_x)
+        SUB_BG3_CX  = x<<8;
+      else
+        SUB_BG3_CX  = 0;
+
+      if (allow_scrolling_y)
+        SUB_BG3_CY  = y<<8;
+      else
+        SUB_BG3_CY  = 0;
       
       //SUB_BG2_CX  = -x;
       //SUB_BG2_CY  = -y;
 
       if (pressed & KEY_TOUCH)
         {
-          if (touch.px < 48 || touch.px > 256 - 48)
+          const u8* picture = 0;
+          const u8* subpicture = 0;
+          
+          if (touch.px < 48)
             {
-              if (touch.px < 48)
-                {
-                  blaster.pan = 255;
-                }
-              else
-                {
-                  blaster.pan = 255;
-                }
-
-              const u8* picture = 0;
-              
               if (touch.py < 48)
-                picture = map_img_bin;
-              else if (touch.py >= 48 && touch.py < 48*2)
-                picture = health_img_bin;
-              else if (touch.py >= 2*48 && touch.py < 48*3)
-                picture = comm_img_bin;
-              else if (touch.py >= 3*48 && touch.py < 48*4)
-                picture = weapon_img_bin;
-
-              if (picture)
                 {
-                  for(int i = 0; i < 256*192/2; ++i)
-                    ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)picture)[i];
-                  
-                  playSound(&blaster);
+                  picture = map_img_bin;
+                  subpicture = submap_img_bin;
+                  allow_scrolling_x = true;
+                  allow_scrolling_y = true;
+                }
+              else if (touch.py >= 48 && touch.py < 48*2)
+                {
+                  picture = health_img_bin;
+                  subpicture = subhealth_img_bin;
+                  allow_scrolling_x = false;
+                  allow_scrolling_y = false;
+                }
+              else if (touch.py >= 2*48 && touch.py < 48*3)
+                {
+                  picture = log_img_bin;
+                  subpicture = sublog_img_bin;
+                  allow_scrolling_x = false;
+                  allow_scrolling_y = true;
+                }
+              else if (touch.py >= 3*48 && touch.py < 48*4)
+                {
+                  picture = debug_img_bin;
+                  subpicture = subdebug_img_bin;
+                  allow_scrolling_x = false;
+                  allow_scrolling_y = false;
                 }
             }
-          else
+          else if (touch.px > 256 - 48)
             {
+              if (touch.py < 48)
+                {
+                  picture = items_img_bin;
+                  subpicture = subitems_img_bin;
+                  allow_scrolling_x = false;
+                  allow_scrolling_y = false;
+                }
+              else if (touch.py >= 48 && touch.py < 48*2)
+                {
+                  picture = scan_img_bin;
+                  subpicture = subscan_img_bin;
+                  allow_scrolling_x = true;
+                  allow_scrolling_y = true;
+                }
+              else if (touch.py >= 2*48 && touch.py < 48*3)
+                {
+                  picture = comm_img_bin;
+                  subpicture = subcomm_img_bin;
+                  allow_scrolling_x = false;
+                  allow_scrolling_y = false;
+                }
+              else if (touch.py >= 3*48 && touch.py < 48*4)
+                {
+                  picture = weapon_img_bin;
+                  subpicture = subweapon_img_bin;
+                  allow_scrolling_x = false;
+                  allow_scrolling_y = false;
+                }
+            }
+
+          if (picture)
+            {
+              for(int i = 0; i < 256*192/2; ++i)
+                ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)picture)[i];
+              
+              playSound(&blaster);
+
+              if (subpicture)
+                {
+                  for(int i = 0; i < 256*256/2; ++i)
+                    ((u16*)BG_BMP_RAM_SUB(0))[i] = ((u16*)subpicture)[i];
+                }
+            }
+          else 
+            {
+              // Didn't click on anything, so we assume middle region
               touch_down = touch;
               oldx = x;
               oldy = y;
@@ -377,6 +539,16 @@ int main(void)
         }
       updateOAM();
     }
+}
+
+int main(void)
+{
+  // irqs are nice
+  irqInit();
+  irqEnable(IRQ_VBLANK);
+
+  titlescreen();
+  gamescreen();
 
   return 0;
 }
