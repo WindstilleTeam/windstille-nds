@@ -9,6 +9,9 @@
 #include <nds/arm9/sound.h>             // sound functions
 #include <nds/arm9/video.h>             // sound functions
 
+#include "glyph.hpp"
+#include "verdana10.hpp"
+
 //makefile automaticly makes a header file for access
 //to the binary data in any file ending in .bin that is in
 //the data folder.  It also links in that data to your project
@@ -32,6 +35,9 @@
 #include "subscan_img_bin.h"
 #include "subcomm_img_bin.h"
 #include "subweapon_img_bin.h"
+
+#include "use_icon_img_bin.h"
+#include "use_icon_pal_bin.h"
 
 #include "realmap_img_bin.h"
 #include "subscreen_pal_bin.h"
@@ -84,9 +90,16 @@
 #include "walk_frame14_pal_bin.h"
 #include "walk_frame15_pal_bin.h"
 
+#include "smalldoor_img_bin.h"
+#include "smalldoor_pal_bin.h"
 
 #include "doorbg_img_bin.h"
 #include "doorbg_pal_bin.h"
+
+#include "dialog_subscreen_pal_bin.h"
+#include "dialog_topscreen_pal_bin.h"
+#include "dialog_subscreen_img_bin.h"
+#include "dialog_topscreen_img_bin.h"
 
 #include "doorfg_img_bin.h"
 #include "doorfg_pal_bin.h"
@@ -95,6 +108,24 @@
 #include "topscreen_pal_bin.h"
 
 SpriteEntry sprites[128];
+
+
+bool allow_scrolling_x = true;
+bool allow_scrolling_y = true;
+
+int x;
+int y;
+int px;
+int py;
+int oldx;
+int oldy;
+bool drag;
+touchPosition touch_down;
+touchPosition touch;
+int pressed;
+int held;
+
+enum SubscreenMode { DOOR_MINIGAME, PDA, DIALOG } subscreen_mode = PDA;
 
 //turn off all the sprites
 void initSprites(void)
@@ -121,6 +152,38 @@ void updateOAM(void)
 {
   DC_FlushAll();
   dmaCopy(sprites, OAM, 128 * sizeof(SpriteEntry));
+}
+
+void glyph_blit(Glyph& glyph, int px, int py)
+{
+  px += glyph.x;
+  py += glyph.y;
+
+  px /= 2;
+
+  for(int y = 0; y < glyph.height; ++y)
+    for(int x = 0; x < glyph.width/2; ++x)
+      {
+        ((u16*)BG_GFX_SUB)[(py + y) * 128 + (px + x)] = ((u16*)glyph.data)[(y * glyph.width/2) + x];
+      }
+}
+
+void print_hello_world()
+{
+  char chr2idx[256];;
+
+  for(int i = 0; i < 256; ++i)
+    chr2idx[i] = 0;
+    
+  for(int i = 0; i < verdana10_glyphs_size; ++i)
+    chr2idx[int(verdana10_glyphs[i].chr)] = i;
+               
+  char* str = "# ; >? = C D ,<";
+  int x = 10;
+  int y = 10;
+  for(unsigned int i = 0; i < strlen(str); ++i)
+    glyph_blit(verdana10_glyphs[int(chr2idx[int(int(str[i]))])], 
+               x += verdana10_glyphs[int(chr2idx[int(str[i])])].width + 2, y);
 }
 
 void titlescreen()
@@ -162,6 +225,8 @@ void titlescreen()
     BG_GFX_SUB[i] = ((u16*)subtitlescreen_img_bin)[i];
   for(int i = 0; i < 256; ++i)
     BG_PALETTE_SUB[i] = ((u16*)subtitlescreen_pal_bin)[i];
+
+  print_hello_world();
   
   int count = 0;
   while(1) 
@@ -181,7 +246,61 @@ void titlescreen()
     }
 }
 
-void doorminigame()
+
+void init_dialog()
+{
+  videoSetMode(MODE_5_2D | DISPLAY_BG3_ACTIVE);
+  videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE);
+
+  vramSetMainBanks(VRAM_A_MAIN_BG_0x6000000, VRAM_B_MAIN_SPRITE, //VRAM_B_MAIN_BG_0x6020000,
+                   VRAM_C_SUB_BG, VRAM_D_MAIN_BG_0x6020000);
+
+  BG3_CR = BG_BMP8_256x256;
+  SUB_BG3_CR = BG_BMP8_256x256;
+
+  BG3_XDX = 1 << 8;
+  BG3_XDY = 0;
+  BG3_YDX = 0;
+  BG3_YDY = 1 << 8;
+
+  BG3_CX = 0;
+  BG3_CY = 0; //32 << 8;
+
+
+  SUB_BG3_XDX = 1 << 8;
+  SUB_BG3_XDY = 0;
+  SUB_BG3_YDX = 0;
+  SUB_BG3_YDY = 1 << 8;
+
+  SUB_BG3_CX = 0;
+  SUB_BG3_CY = 0; //32 << 8;
+
+
+  for(int i = 0; i < 256; ++i)
+    BG_PALETTE_SUB[i] = ((u16*)dialog_subscreen_pal_bin)[i];
+  
+  for(int i = 0; i < 256; ++i)
+    BG_PALETTE[i] = ((u16*)dialog_topscreen_pal_bin)[i];
+
+  for(int i = 0; i < 256*256/2; ++i)
+    ((u16*)BG_BMP_RAM(0))[i] = ((u16*)dialog_topscreen_img_bin)[i];
+
+  for(int i = 0; i < 256*256/2; ++i)
+    ((u16*)BG_BMP_RAM_SUB(0))[i] = ((u16*)dialog_subscreen_img_bin)[i];
+}
+
+void init_pda();
+
+void update_dialog()
+{
+  if (pressed & KEY_TOUCH)
+    {
+      init_pda();
+      subscreen_mode = PDA;
+    }
+}
+
+void init_doorminigame()
 {
   videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE | DISPLAY_BG2_ACTIVE);  
 
@@ -215,49 +334,206 @@ void doorminigame()
 
   for(int i = 0; i < 256*256/2; ++i)
     ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)doorfg_img_bin)[i];
+}
 
-  bool dragging = false;
-  touchPosition touch_down = touchReadXY();;
-  int door_pos = 0;
-  int old_pos = 0;
-  while(1) 
+bool dragging = false;
+int door_pos = 0;
+int old_pos = 0;
+
+void update_doorminigame()
+{
+  if (pressed & KEY_TOUCH)
     {
-      swiWaitForVBlank();
-      scanKeys();    
-
-      int pressed = keysDown();
-      int held    = keysHeld();
-      if (pressed & KEY_TOUCH)
-        {
-          touch_down = touchReadXY();
+      touch_down = touchReadXY();
           
-          if (touch_down.px > 64 && touch_down.py > 88 &&
-              touch_down.px < door_pos + 64+16 && touch_down.py < door_pos + 88 + 32)
+      if (touch_down.px > 64 && touch_down.py > 88 &&
+          touch_down.px < door_pos + 64+16 && touch_down.py < door_pos + 88 + 32)
+        {
+          dragging = true;
+          old_pos = door_pos;
+        }
+    }
+
+  if ((held & KEY_TOUCH) && dragging == true)
+    {
+      //int scrollpos = abs(std::max(std::min(0, (touch_down.px - cur.px)), -128));
+  
+      door_pos = std::min(std::max(0, old_pos + (touch.px - touch_down.px)), 128);
+    }
+  else
+    {
+      dragging = false;
+    }
+
+  SUB_BG2_CX = -door_pos << 8;
+  if (door_pos < 4)
+    SUB_BG2_CY = door_pos << 8;
+  else
+    SUB_BG2_CY = 4 << 8;
+}
+
+
+void update_pda()
+{
+  if (allow_scrolling_x)
+    SUB_BG3_CX  = x<<8;
+  else
+    SUB_BG3_CX  = 0;
+
+  if (allow_scrolling_y)
+    SUB_BG3_CY  = y<<8;
+  else
+    SUB_BG3_CY  = 0;
+      
+  //SUB_BG2_CX  = -x;
+  //SUB_BG2_CY  = -y;
+
+  if (pressed & KEY_TOUCH)
+    {
+      const u8* picture = 0;
+      const u8* subpicture = 0;
+          
+      if (touch.px < 48)
+        {
+          if (touch.py < 48)
             {
-              dragging = true;
-              old_pos = door_pos;
+              picture = map_img_bin;
+              subpicture = submap_img_bin;
+              allow_scrolling_x = true;
+              allow_scrolling_y = true;
+            }
+          else if (touch.py >= 48 && touch.py < 48*2)
+            {
+              picture = health_img_bin;
+              subpicture = subhealth_img_bin;
+              allow_scrolling_x = false;
+              allow_scrolling_y = false;
+            }
+          else if (touch.py >= 2*48 && touch.py < 48*3)
+            {
+              picture = log_img_bin;
+              subpicture = sublog_img_bin;
+              allow_scrolling_x = false;
+              allow_scrolling_y = true;
+            }
+          else if (touch.py >= 3*48 && touch.py < 48*4)
+            {
+              picture = debug_img_bin;
+              subpicture = subdebug_img_bin;
+              allow_scrolling_x = false;
+              allow_scrolling_y = false;
+            }
+        }
+      else if (touch.px > 256 - 48)
+        {
+          if (touch.py < 48)
+            {
+              picture = items_img_bin;
+              subpicture = subitems_img_bin;
+              allow_scrolling_x = false;
+              allow_scrolling_y = false;
+            }
+          else if (touch.py >= 48 && touch.py < 48*2)
+            {
+              picture = scan_img_bin;
+              subpicture = subscan_img_bin;
+              allow_scrolling_x = true;
+              allow_scrolling_y = true;
+            }
+          else if (touch.py >= 2*48 && touch.py < 48*3)
+            {
+              picture = comm_img_bin;
+              subpicture = subcomm_img_bin;
+              allow_scrolling_x = false;
+              allow_scrolling_y = false;
+            }
+          else if (touch.py >= 3*48 && touch.py < 48*4)
+            {
+              picture = weapon_img_bin;
+              subpicture = subweapon_img_bin;
+              allow_scrolling_x = false;
+              allow_scrolling_y = false;
             }
         }
 
-      if ((held & KEY_TOUCH) && dragging == true)
+      if (picture)
         {
-          touchPosition cur = touchReadXY();
+          for(int i = 0; i < 256*192/2; ++i)
+            ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)picture)[i];
           
-          //int scrollpos = abs(std::max(std::min(0, (touch_down.px - cur.px)), -128));
-  
-          door_pos = std::min(std::max(0, old_pos + (cur.px - touch_down.px)), 128);
-        }
-      else
-        {
-          dragging = false;
-        }
+          
+          TransferSoundData blaster = {
+            blaster_bin,            /* Sample address */
+            blaster_bin_size,       /* Sample length */
+            11025,                  /* Sample rate */
+            127,                    /* Volume */
+            64,                     /* panning */
+            1                       /* format */
+          };
 
-      SUB_BG2_CX = -door_pos << 8;
-      if (door_pos < 4)
-        SUB_BG2_CY = door_pos << 8;
-      else
-        SUB_BG2_CY = 4 << 8;
-    }
+          playSound(&blaster);
+
+          if (subpicture)
+            {
+              for(int i = 0; i < 256*256/2; ++i)
+                ((u16*)BG_BMP_RAM_SUB(0))[i] = ((u16*)subpicture)[i];
+            }
+        }
+      else 
+        {
+          // Didn't click on anything, so we assume middle region
+          touch_down = touch;
+          oldx = x;
+          oldy = y;
+          drag = true;
+        }
+    }  
+}
+
+void update_subscreen()
+{
+  if (subscreen_mode == PDA)
+    update_pda();
+  else if (subscreen_mode == DIALOG)
+    update_dialog();
+  else
+    update_doorminigame();
+}
+
+void init_pda()
+{
+
+  // set the sub background up for text display (we could just print to one
+  // of the main display text backgrounds just as easily
+  videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE | DISPLAY_BG2_ACTIVE);
+  SUB_BG2_CR = BG_BMP8_256x256 | BG_WRAP_ON | BG_BMP_BASE(4);
+  SUB_BG3_CR = BG_BMP8_256x256 | BG_WRAP_ON;
+
+  SUB_BG3_XDX = 1 << 8;
+  SUB_BG3_XDY = 0;
+  SUB_BG3_YDX = 0;
+  SUB_BG3_YDY = 1 << 8;
+
+  SUB_BG2_XDX = 1 << 8;
+  SUB_BG2_XDY = 0;
+  SUB_BG2_YDX = 0;
+  SUB_BG2_YDY = 1 << 8;
+  
+
+  SUB_BG3_CX = 0;
+  SUB_BG3_CY = 0; //32 << 8;
+
+  SUB_BG2_CX = 0;//2000;
+  SUB_BG2_CY = 0;//2000; //32 << 8;
+
+  for(int i = 0; i < 256; ++i)
+    BG_PALETTE_SUB[i] = ((u16*)subscreen_pal_bin)[i];
+
+  for(int i = 0; i < 256*192/2; ++i)
+    ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)map_img_bin)[i];
+
+  for(int i = 0; i < 256*256/2; ++i)
+    ((u16*)BG_BMP_RAM_SUB(0))[i] = ((u16*)realmap_img_bin)[i];
 }
 
 void gamescreen()
@@ -268,10 +544,6 @@ void gamescreen()
                DISPLAY_BG3_ACTIVE |
                DISPLAY_SPR_ACTIVE | DISPLAY_SPR_1D_LAYOUT
                );
-
-  // set the sub background up for text display (we could just print to one
-  // of the main display text backgrounds just as easily
-  videoSetModeSub(MODE_5_2D | DISPLAY_BG3_ACTIVE | DISPLAY_BG2_ACTIVE);
 
   // set the first bank as background memory and the third as sub background memory
   // B and D are not used (if you want a bitmap greater than 256x256 you will need more
@@ -285,8 +557,6 @@ void gamescreen()
   
   BG1_CR = BG_32x32 | BG_TILE_BASE(0) | BG_MAP_BASE(8) | BG_256_COLOR;
 
-  SUB_BG2_CR = BG_BMP8_256x256 | BG_WRAP_ON | BG_BMP_BASE(4);
-  SUB_BG3_CR = BG_BMP8_256x256 | BG_WRAP_ON;
 
   // these are rotation backgrounds so you must set the rotation attributes:
   // these are fixed point numbers with the low 8 bits the fractional part
@@ -301,15 +571,6 @@ void gamescreen()
   BG2_YDX = 0;
   BG2_YDY = 1 << 8;
 
-  SUB_BG3_XDX = 1 << 8;
-  SUB_BG3_XDY = 0;
-  SUB_BG3_YDX = 0;
-  SUB_BG3_YDY = 1 << 8;
-
-  SUB_BG2_XDX = 1 << 8;
-  SUB_BG2_XDY = 0;
-  SUB_BG2_YDX = 0;
-  SUB_BG2_YDY = 1 << 8;
 
   //our bitmap looks a bit better if we center it so scroll down (256 - 192) / 2
   BG3_CX = 0;
@@ -317,12 +578,6 @@ void gamescreen()
 
   BG2_CX = 0;
   BG2_CY = 0;
-
-  SUB_BG3_CX = 0;
-  SUB_BG3_CY = 0; //32 << 8;
-
-  SUB_BG2_CX = 0;//2000;
-  SUB_BG2_CY = 0;//2000; //32 << 8;
 
   for(int i = 0; i < 512*256; i++)
     BG_GFX[i] = ((u16*)topscreen_img_bin)[i];
@@ -332,32 +587,15 @@ void gamescreen()
   //for(int i = 0; i < 256; ++i)
   //BG_PALETTE[i] = ((u16*)numbers_pal_bin)[i];
 
-  for(int i = 0; i < 256; ++i)
-    BG_PALETTE_SUB[i] = ((u16*)subscreen_pal_bin)[i];
-
-  for(int i = 0; i < 256*192/2; ++i)
-    ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)health_img_bin)[i];
-
-  for(int i = 0; i < 256*256/2; ++i)
-    ((u16*)BG_BMP_RAM_SUB(0))[i] = ((u16*)realmap_img_bin)[i];
-
-  TransferSoundData blaster = {
-    blaster_bin,            /* Sample address */
-    blaster_bin_size,       /* Sample length */
-    11025,                  /* Sample rate */
-    127,                    /* Volume */
-    64,                     /* panning */
-    1                       /* format */
-  };
         
-  int x = 0;
-  int y = 0;
-  int px = 128-32;
-  int py = 103;
-  int oldx = x;
-  int oldy = y;
-  bool drag = false;
-  touchPosition touch_down = touchReadXY();
+  x = 0;
+  y = 0;
+  px = 128-32;
+  py = 103;
+  oldx = x;
+  oldy = y;
+  drag = false;
+  touch_down = touchReadXY();
 
   initSprites();
   
@@ -417,6 +655,12 @@ void gamescreen()
   for(int i=0;i<64*32; ++i)
     SPRITE_GFX[i] = ((u16*)sprite_img_bin)[i];
 
+  for(int i=0;i<32*32/2; ++i)
+    SPRITE_GFX[i+64*32] = ((u16*)use_icon_img_bin)[i];
+
+  for(int i=0;i<64*32; ++i)
+    SPRITE_GFX[i+ (64*32) + (32*16)] = ((u16*)smalldoor_img_bin)[i];
+
   for(int i=0;i<64*32; ++i)
     SPRITE_GFX[i] = ((u16*)walk_frame00_img_bin)[i];
 
@@ -428,12 +672,24 @@ void gamescreen()
   sprites[0].attribute[1] = ATTR1_SIZE_64 | py  | ATTR1_FLIP_Y;
   sprites[0].attribute[2] = 0;
 
+  sprites[1].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | (192-32-8) | ATTR0_DISABLED;
+  sprites[1].attribute[1] = ATTR1_SIZE_32 | (256-32-8);
+  sprites[1].attribute[2] = 64*2;//64*64;//64*32;
+
+  sprites[2].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | 90-6;
+  sprites[2].attribute[1] = ATTR1_SIZE_64 | 200+16+2;
+  sprites[2].attribute[2] = 64*2+32;
+
   int frame_index = 0;
   int sx = 0;
   //int sy = 0;
-  bool allow_scrolling_x = true;
-  bool allow_scrolling_y = true;
   bool left = true;;
+
+  if (subscreen_mode == PDA)
+    init_pda();
+  else
+    init_doorminigame();
+
   while(1) 
     {
       swiWaitForVBlank();
@@ -446,15 +702,27 @@ void gamescreen()
 
       // read the button states
       scanKeys();
-      touchPosition touch = touchReadXY();
+      touch = touchReadXY();
 
-      int pressed = keysDown();	// buttons pressed this loop
-      int held = keysHeld();		// buttons currently held
-
+      pressed = keysDown();	// buttons pressed this loop
+      held = keysHeld();		// buttons currently held
       
-      sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | mod(103,512);
-      sprites[0].attribute[1] = ATTR1_SIZE_64 | mod(128-32,512) | (left ? 0: ATTR1_FLIP_X);
-      sprites[0].attribute[2] = 0;
+      if (subscreen_mode != DIALOG)
+        {
+          sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | mod(103,512);
+          sprites[0].attribute[1] = ATTR1_SIZE_64 | mod(128-32,512) | (left ? 0: ATTR1_FLIP_X);
+          sprites[0].attribute[2] = 0;
+
+          sprites[2].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | mod(90-6, 512);
+          sprites[2].attribute[1] = ATTR1_SIZE_64 | mod((200+16+2 - px + 128-32 + door_pos/4),512);
+          sprites[2].attribute[2] = 64*2+32;
+        }
+      else
+        {
+          sprites[0].attribute[0] |=  ATTR0_DISABLED;
+          sprites[1].attribute[0] |=  ATTR0_DISABLED;
+          sprites[2].attribute[0] |=  ATTR0_DISABLED;
+        }
 
       if ((held & KEY_L) && (held & KEY_R))
         swiSoftReset();
@@ -502,9 +770,45 @@ void gamescreen()
       else if (held & KEY_UP)
         py -= 1;
 
+
+      if ((px + 128) > 328-16 && 
+          (px + 128) < (328+35+16))
+        {
+          sprites[1].attribute[0] &=  ~ATTR0_DISABLED;
+          //if (pressed & KEY_X)
+          //            {
+          if (subscreen_mode == PDA)
+            {
+              init_doorminigame();
+              subscreen_mode = DOOR_MINIGAME;
+            }
+          else if (subscreen_mode == DOOR_MINIGAME)
+            {
+              init_pda();
+              subscreen_mode = PDA;
+            }
+          //}
+        }
+      else if ((px + 128) > 133-16 &&
+               (px + 128) < 133-16+32)
+        {
+          init_dialog();
+          subscreen_mode = DIALOG;
+        }
+      else
+        {
+          sprites[1].attribute[0] |= ATTR0_DISABLED;
+          if (subscreen_mode == DOOR_MINIGAME)
+            {
+              init_pda();
+              subscreen_mode = PDA;
+            }
+        }
+
+
       sx = px;
       //sx += 1;
-
+      
       if ((held & KEY_TOUCH)  && drag)
         {
           x = oldx + (touch_down.px - touch.px);
@@ -513,116 +817,17 @@ void gamescreen()
 
       if (!(held & KEY_TOUCH))
         drag = false;
-
-      BG3_CX  = x*500 + sx<<8 ;
-      BG3_CY  = y*500 + (32<<8);
-
+      
+      if (subscreen_mode != DIALOG)
+        {
+          BG3_CX  = x*500 + sx<<8 ;
+          BG3_CY  = y*500 + (32<<8);
+        }
       //2_CX  = -x;
       //2_CY  = -y;
-
-      if (allow_scrolling_x)
-        SUB_BG3_CX  = x<<8;
-      else
-        SUB_BG3_CX  = 0;
-
-      if (allow_scrolling_y)
-        SUB_BG3_CY  = y<<8;
-      else
-        SUB_BG3_CY  = 0;
       
-      //SUB_BG2_CX  = -x;
-      //SUB_BG2_CY  = -y;
+      update_subscreen();
 
-      if (pressed & KEY_TOUCH)
-        {
-          const u8* picture = 0;
-          const u8* subpicture = 0;
-          
-          if (touch.px < 48)
-            {
-              if (touch.py < 48)
-                {
-                  picture = map_img_bin;
-                  subpicture = submap_img_bin;
-                  allow_scrolling_x = true;
-                  allow_scrolling_y = true;
-                }
-              else if (touch.py >= 48 && touch.py < 48*2)
-                {
-                  picture = health_img_bin;
-                  subpicture = subhealth_img_bin;
-                  allow_scrolling_x = false;
-                  allow_scrolling_y = false;
-                }
-              else if (touch.py >= 2*48 && touch.py < 48*3)
-                {
-                  picture = log_img_bin;
-                  subpicture = sublog_img_bin;
-                  allow_scrolling_x = false;
-                  allow_scrolling_y = true;
-                }
-              else if (touch.py >= 3*48 && touch.py < 48*4)
-                {
-                  picture = debug_img_bin;
-                  subpicture = subdebug_img_bin;
-                  allow_scrolling_x = false;
-                  allow_scrolling_y = false;
-                }
-            }
-          else if (touch.px > 256 - 48)
-            {
-              if (touch.py < 48)
-                {
-                  picture = items_img_bin;
-                  subpicture = subitems_img_bin;
-                  allow_scrolling_x = false;
-                  allow_scrolling_y = false;
-                }
-              else if (touch.py >= 48 && touch.py < 48*2)
-                {
-                  picture = scan_img_bin;
-                  subpicture = subscan_img_bin;
-                  allow_scrolling_x = true;
-                  allow_scrolling_y = true;
-                }
-              else if (touch.py >= 2*48 && touch.py < 48*3)
-                {
-                  picture = comm_img_bin;
-                  subpicture = subcomm_img_bin;
-                  allow_scrolling_x = false;
-                  allow_scrolling_y = false;
-                }
-              else if (touch.py >= 3*48 && touch.py < 48*4)
-                {
-                  picture = weapon_img_bin;
-                  subpicture = subweapon_img_bin;
-                  allow_scrolling_x = false;
-                  allow_scrolling_y = false;
-                }
-            }
-
-          if (picture)
-            {
-              for(int i = 0; i < 256*192/2; ++i)
-                ((u16*)BG_BMP_RAM_SUB(4))[i] = ((u16*)picture)[i];
-              
-              playSound(&blaster);
-
-              if (subpicture)
-                {
-                  for(int i = 0; i < 256*256/2; ++i)
-                    ((u16*)BG_BMP_RAM_SUB(0))[i] = ((u16*)subpicture)[i];
-                }
-            }
-          else 
-            {
-              // Didn't click on anything, so we assume middle region
-              touch_down = touch;
-              oldx = x;
-              oldy = y;
-              drag = true;
-            }
-        }
       updateOAM();
     }
 }
@@ -633,9 +838,9 @@ int main(void)
   irqInit();
   irqEnable(IRQ_VBLANK);
 
-  //titlescreen();
-  //gamescreen();
-  doorminigame();
+  titlescreen();
+  gamescreen();
+  //doorminigame();
 
   return 0;
 }

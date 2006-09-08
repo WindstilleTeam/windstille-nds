@@ -1,0 +1,7 @@
+# -*- python -*- 
+
+env = Environment()
+env.ParseConfig("pkg-config --cflags --libs libpng")
+env.Program('convert', ['main.cpp'])
+
+# EOF #
