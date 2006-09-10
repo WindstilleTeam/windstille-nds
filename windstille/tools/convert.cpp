@@ -1,7 +1,7 @@
 /* To compile this programm:
 
-    % g++ -o png2stratagus  png2stratagus.cpp -lpng
- */
+% g++ -o png2stratagus  png2stratagus.cpp -lpng
+*/
 
 /* This programm can be used to fix the palette of a indexed png file
    to be suitable for Stratagus. It works like this:
@@ -15,8 +15,8 @@
    3) You run png2stratagus on the image
 
    4) The final images will be written to out.png in the current
-      directory
- */
+   directory
+*/
 
 #include <string>
 #include <fstream>
@@ -28,6 +28,26 @@
 #include <stdlib.h>
 #include <png.h>
 #include <assert.h>
+
+
+struct Glyph
+{
+  unsigned char chr;
+
+  unsigned char  x;
+  unsigned char  y;
+
+  unsigned char  width;
+  unsigned char  height;
+
+  unsigned char* data;
+};
+
+struct Font
+{
+  unsigned char height;
+  Glyph glyphs[256];
+};
 
 class Color
 {
@@ -100,10 +120,10 @@ public:
     png_read_image(png_ptr, row_pointers);
 
     if (color_type != PNG_COLOR_TYPE_PALETTE)
-	{
-	  std::cout << "Unsupported color type" << std::endl;
-	  exit (EXIT_FAILURE);
-	}
+      {
+        std::cout << "Unsupported color type" << std::endl;
+        exit (EXIT_FAILURE);
+      }
     
     int num_colors;
     int num_trans = 0;
@@ -131,8 +151,8 @@ public:
       m_transcol = -1;
 
     if (0)
-    for (int i = 0; i < num_trans; i++)
-      std::cout << "transcolor: " << int(trans[i]) << std::endl;
+      for (int i = 0; i < num_trans; i++)
+        std::cout << "transcolor: " << int(trans[i]) << std::endl;
     
     m_width  = pwidth;
     m_height = pheight;
@@ -142,7 +162,7 @@ public:
     // Convert the png into our internal data structure
     for (int y = 0; y < m_height; y++)
       {
-	for (int i = 0; i < pwidth /*row_bytes*/; i++)
+	for (int i = 0; i < int(pwidth) /*row_bytes*/; i++)
 	  {
             //std::cout << std::setw(3) << int(row_pointers[y][i]) << " ";
 	    m_image[i + (m_width * y)] = row_pointers[y][i];
@@ -162,9 +182,9 @@ public:
 
         if (0)
           std::cout << "Color: " 
-                  << m_palette[i].red << ", "
-                  << m_palette[i].green << ", "
-                  << m_palette[i].blue << std::endl;
+                    << m_palette[i].red << ", "
+                    << m_palette[i].green << ", "
+                    << m_palette[i].blue << std::endl;
       }
 
     // Following line causes a crash in combination with png_set_packing
@@ -286,15 +306,24 @@ struct Char
 
 void detect_characters(Image& image, char* str, char* fontname)
 {
-  std::stringstream out1;
-  std::stringstream out2;
-  //  std::stringstream out3;
+  Font font;
+
+  font.height = image.get_height();
+
+  for(int i = 0; i < 256; ++i)
+    {
+      font.glyphs[i].chr    = i;
+      font.glyphs[i].x      = 0;
+      font.glyphs[i].y      = 0;
+      font.glyphs[i].width  = 0;
+      font.glyphs[i].height = 0;
+      font.glyphs[i].data   = 0;
+    }
+
 
   int width  = image.get_width();
   int height = image.get_height();
 
-  //out2 << "Image: " << image.get_width() << "x" << image.get_height() << std::endl;
-  
   bool last_was_empty = true;
 
   int char_start = 0;
@@ -309,12 +338,8 @@ void detect_characters(Image& image, char* str, char* fontname)
   last_char.w = 0;
   last_char.h = 0;
 
-  out2 << "Glyph " << fontname << "_glyphs[" << fontname << "_glyphs_size" << "] = { " << std::endl;
-  //out3 << "char " << fontname << "_chr2idx[256] = {}" << std::endl;
-
   for(int x = 0; x < width; ++x)
     {
-      //std::cout << x << " -> " << vline_empty(image, x) << std::endl;
       if (!vline_empty(image, x))
         {
           if (last_was_empty)
@@ -378,57 +403,91 @@ void detect_characters(Image& image, char* str, char* fontname)
                 }
               else
                 {
-                  out2 
-                    << " { " 
-                    << "'"  << (new_char.chr == '\'' || new_char.chr == '\\' ? "\\" : "") << new_char.chr << "', " 
-                    << std::dec << std::setfill(' ') << std::setw(3) << 0 /*new_char.x*/ << ", " 
-                    << std::dec << std::setfill(' ') << std::setw(3) << new_char.y << ", " 
-                    << std::dec << std::setfill(' ') << std::setw(2) << new_char.w << ", "
-                    << std::dec << std::setfill(' ') << std::setw(2) << new_char.h << ", "
-                    << fontname << "_glyph_0x" << std::hex << int(new_char.chr) << " },";
+                  // Found a new char
+                  Glyph& glyph = font.glyphs[int(new_char.chr)];
+                  glyph.x      = 0; // new_char.x; any way to detect this?
+                  glyph.y      = new_char.y;
+                  glyph.width  = new_char.w;
+                  glyph.height = new_char.h;
+                  glyph.data   = new unsigned char[glyph.width * glyph.height];
                   
-                  {
-                    out1 << "\n// Character: '"<< new_char.chr << "'\n";
-                    out1 << "unsigned char " << fontname << "_glyph_0x" << std::hex << int(new_char.chr)
-                         << "[] = {\n";
-                    for(int y = new_char.y; y < new_char.y + new_char.h; ++y)
-                      {
-                        out1 << "    ";
-                        for(int x = new_char.x; x < new_char.x + new_char.w; ++x)
-                          {
-                            out1 << "0x" << std::setw(2) << std::setfill('0') << std::hex << int(image.at(x, y));
-                            out1 << ", ";
-                          }
-                        out1 << std::endl;
-                      }
-                    out1 << "};\n";
-                  }
-
-                  out2 << std::endl;
-                  
+                  for(int y = 0; y < glyph.height; ++y)
+                    for(int x = 0; x < glyph.width; ++x)
+                      glyph.data[y * glyph.width + x] = image.at(x + new_char.x,
+                                                                 y + new_char.y);
                   last_char.chr = 0;
                   last_char.x = 0;
                   last_char.y = 0;
                   last_char.w = 0;
                   last_char.h = 0;
                 }
-
               i += 1;
             }
-
           last_was_empty = true;
         }
     }
 
-  out2 << "};" << std::endl;
+  if (str[i] != '\0')
+    {
+      std::cout << "Not all characters found, missing: " << str+i << std::endl;
+      exit(EXIT_FAILURE);
+    }
 
-  std::cout << out1.str() << std::endl;
-  std::cout << "const int " << fontname << "_glyphs_size = " << i << ";" << std::endl;
-  std::cout << out2.str() << std::endl;
+  std::stringstream out;
 
-  //  std::cout << out3.str() << std::endl;
+  // Write .h file
+  out << "// This file is automatically generated, don't edit by hand!" << std::endl;
+  for(int i = 0; i < 256; ++i)
+    {
+      Glyph& glyph = font.glyphs[i];
 
-  std::cout << "/* EOF */" << std::endl;
+      if (glyph.data != 0)
+        {
+          out << "\n// Character: '"<< glyph.chr << "'" << std::endl;
+          out << "// Size: " << std::dec << int(glyph.width) << "x" << int(glyph.height) << "\n";
+          out << "const unsigned char " << fontname << "_glyph_0x" << std::hex << int(glyph.chr)
+              << "[] = {\n";
+          for(int y = 0; y < glyph.height; ++y)
+            {
+              out << "    ";
+              for(int x = 0; x < glyph.width; ++x)
+                {
+                  out << "0x" << std::setw(2) << std::setfill('0') << std::hex << int(glyph.data[y*glyph.width + x]);
+                  out << ", ";
+                }
+              out << std::endl;
+            }
+          out << "};\n";
+        }
+    }
+
+  out << std::endl;
+  out << "const Font " << fontname << "_font = {\n";
+  out << "  " << std::dec << int(font.height) << ", // font height" << std::endl;
+  out << "  {\n";
+  for(int i = 0; i < 256; ++i)
+    {
+      Glyph& glyph = font.glyphs[i];
+      out << "    { ";
+      if (isprint(glyph.chr))
+        out << "'"  << (glyph.chr == '\'' || glyph.chr == '\\' ? "\\" : "") << glyph.chr << "', ";
+      else
+        out << std::dec << int(glyph.chr) << ", ";
+
+        out << std::dec << std::setfill(' ') << std::setw(3) << int(glyph.x) << ", " 
+          << std::dec << std::setfill(' ') << std::setw(3) << int(glyph.y) << ", " 
+          << std::dec << std::setfill(' ') << std::setw(2) << int(glyph.width) << ", "
+          << std::dec << std::setfill(' ') << std::setw(2) << int(glyph.height) << ", ";
+      if (glyph.data)
+        out << fontname << "_glyph_0x" << std::hex << int(glyph.chr) << " }," << std::endl;
+      else
+        out << 0 << " }," << std::endl;
+    }
+  out << "  }\n";
+  out << "};" << std::endl;
+  out << "\n/* EOF */" << std::endl;
+
+  std::cout << out.str();
 }
 
 int main (int argc, char* argv[])
