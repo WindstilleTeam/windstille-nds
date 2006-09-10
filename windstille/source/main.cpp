@@ -9,6 +9,7 @@
 #include <nds/arm9/sound.h>             // sound functions
 #include <nds/arm9/video.h>             // sound functions
 
+#include "font.hpp"
 #include "glyph.hpp"
 #include "verdana10.hpp"
 
@@ -107,6 +108,8 @@
 #include "topscreen_img_bin.h"
 #include "topscreen_pal_bin.h"
 
+#include "math.hpp"
+
 SpriteEntry sprites[128];
 
 
@@ -126,6 +129,16 @@ int pressed;
 int held;
 
 enum SubscreenMode { DOOR_MINIGAME, PDA, DIALOG } subscreen_mode = PDA;
+
+inline int odd(int i)
+{
+  return (i & 1);
+}
+
+inline int even(int i)
+{
+  return !(i & 1);
+}
 
 //turn off all the sprites
 void initSprites(void)
@@ -154,36 +167,59 @@ void updateOAM(void)
   dmaCopy(sprites, OAM, 128 * sizeof(SpriteEntry));
 }
 
-void glyph_blit(Glyph& glyph, int px, int py)
+void putpixel(int x, int y, u8 color)
+{
+  if (color != 0) // ignore transcol
+    {
+      u16 px = ((u16*)BG_GFX_SUB)[y * 128 + x/2];
+
+      if (odd(x % 2))
+        { // odd
+          ((u16*)BG_GFX_SUB)[y * 128 + x/2] = (px & 0xFF) | (color << 8);
+        }
+      else
+        { // even
+          ((u16*)BG_GFX_SUB)[y * 128 + x/2] = (px & 0xFF00) | color;
+        }
+    }
+}
+
+void glyph_blit(const Glyph& glyph, int px, int py)
 {
   px += glyph.x;
   py += glyph.y;
 
-  px /= 2;
-
+  // Fast but correct
   for(int y = 0; y < glyph.height; ++y)
-    for(int x = 0; x < glyph.width/2; ++x)
+    for(int x = 0; x < glyph.width; ++x)
       {
-        ((u16*)BG_GFX_SUB)[(py + y) * 128 + (px + x)] = ((u16*)glyph.data)[(y * glyph.width/2) + x];
+        putpixel(px + x, py + y, glyph.data[y*glyph.width + x]);
       }
 }
 
-void print_hello_world()
-{
-  char chr2idx[256];;
-
-  for(int i = 0; i < 256; ++i)
-    chr2idx[i] = 0;
-    
-  for(int i = 0; i < verdana10_glyphs_size; ++i)
-    chr2idx[int(verdana10_glyphs[i].chr)] = i;
-               
-  char* str = "# ; >? = C D ,<";
+void print(char* str)
+{               
   int x = 10;
   int y = 10;
+
   for(unsigned int i = 0; i < strlen(str); ++i)
-    glyph_blit(verdana10_glyphs[int(chr2idx[int(int(str[i]))])], 
-               x += verdana10_glyphs[int(chr2idx[int(str[i])])].width + 2, y);
+    {
+      if (str[i] == ' ')
+        {
+          x += 4;
+        }
+      else if (str[i] == '\n')
+        {
+          x = 10;
+          y += 12;
+        }
+      else
+        {
+          const Glyph& glyph = verdana10_font.glyphs[int(str[i])];
+          glyph_blit(glyph, x, y);
+          x += glyph.width;
+        }
+    }
 }
 
 void titlescreen()
@@ -194,8 +230,8 @@ void titlescreen()
   vramSetMainBanks(VRAM_A_MAIN_BG_0x6000000, VRAM_B_LCD,
                    VRAM_C_SUB_BG, VRAM_D_LCD); 
 
-  BG3_CR     = BG_BMP8_256x256 | BG_WRAP_ON;
-  SUB_BG3_CR = BG_BMP8_256x256 | BG_WRAP_ON;
+  BG3_CR     = BG_BMP8_256x256 | BG_WRAP_ON | BG_MOSAIC_ON;
+  SUB_BG3_CR = BG_BMP8_256x256 | BG_WRAP_ON | BG_MOSAIC_ON;
 
   // these are rotation backgrounds so you must set the rotation attributes:
   // these are fixed point numbers with the low 8 bits the fractional part
@@ -226,9 +262,12 @@ void titlescreen()
   for(int i = 0; i < 256; ++i)
     BG_PALETTE_SUB[i] = ((u16*)subtitlescreen_pal_bin)[i];
 
-  print_hello_world();
+  print("Hello World, 'This is a\nreally hard test,\nbla bla\nblabla");
   
   int count = 0;
+
+  int mosaic_x = 0;
+  int mosaic_y = 0;
   while(1) 
     {
       swiWaitForVBlank();
@@ -243,6 +282,30 @@ void titlescreen()
           if (count > 0)
             break;
         }
+
+      if (pressed & KEY_DOWN)
+        mosaic_y -= 1;
+      if (pressed & KEY_UP)
+        mosaic_y += 1;
+
+      if (pressed & KEY_LEFT)
+        mosaic_x -= 1;
+      if (pressed & KEY_RIGHT)
+        mosaic_x += 1;
+
+      if (pressed & KEY_X)
+        mosaic_y = mosaic_x -= 1;
+      if (pressed & KEY_Y)
+        mosaic_y = mosaic_x += 1;
+
+      mosaic_x = Math::mid(0, mosaic_x, 15);
+      mosaic_y = Math::mid(0, mosaic_y, 15);
+ 
+      BG3_CX = (mosaic_x/2) << 8;
+      BG3_CY = (mosaic_y/2) << 8;
+
+      MOSAIC_CR = mosaic_x | (mosaic_y << 4);
+      SUB_MOSAIC_CR = mosaic_x | (mosaic_y << 4);
     }
 }
 
@@ -668,9 +731,9 @@ void gamescreen()
     SPRITE_PALETTE[i] = ((u16*)walk_frame00_pal_bin)[i];
 
 
-  sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | px;
+  sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_TYPE_BLENDED | ATTR0_BMP | px;
   sprites[0].attribute[1] = ATTR1_SIZE_64 | py  | ATTR1_FLIP_Y;
-  sprites[0].attribute[2] = 0;
+  sprites[0].attribute[2] = ATTR2_ALPHA(3);
 
   sprites[1].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | (192-32-8) | ATTR0_DISABLED;
   sprites[1].attribute[1] = ATTR1_SIZE_32 | (256-32-8);
@@ -709,13 +772,13 @@ void gamescreen()
       
       if (subscreen_mode != DIALOG)
         {
-          sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | mod(103,512);
+          sprites[0].attribute[0] = ATTR0_SQUARE | ATTR0_TYPE_BLENDED | ATTR0_COLOR_256 | mod(103,512);
           sprites[0].attribute[1] = ATTR1_SIZE_64 | mod(128-32,512) | (left ? 0: ATTR1_FLIP_X);
-          sprites[0].attribute[2] = 0;
+          sprites[0].attribute[2] = ATTR2_ALPHA(3);
 
-          sprites[2].attribute[0] = ATTR0_SQUARE | ATTR0_COLOR_256 | mod(90-6, 512);
+          sprites[2].attribute[0] = ATTR0_SQUARE | ATTR0_TYPE_BLENDED | ATTR0_COLOR_256 | mod(90-6, 512);
           sprites[2].attribute[1] = ATTR1_SIZE_64 | mod((200+16+2 - px + 128-32 + door_pos/4),512);
-          sprites[2].attribute[2] = 64*2+32;
+          sprites[2].attribute[2] = ATTR2_ALPHA(1) | 64*2+32;
         }
       else
         {

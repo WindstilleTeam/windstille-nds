@@ -2,6 +2,6 @@
 
 env = Environment()
 env.ParseConfig("pkg-config --cflags --libs libpng")
-env.Program('convert', ['main.cpp'])
+env.Program('convert', ['convert.cpp'], CXXFLAGS = ['-Wall', '-O2', '-g'])
 
 # EOF #
