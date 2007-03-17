@@ -27,7 +27,7 @@ class ChoiceList
   
   def show()
     choices.each_with_index{|choice, i|
-      puts "#{i} #{choice.text}"
+      puts "#{i}.) #{choice.text}"
     }
     puts ""
     begin 
@@ -108,7 +108,11 @@ else
       choice_list = ChoiceList.new()
       el.elements.each("choice") { |i|
         choice_list.choices.push(Choice.new(i.elements["text"].text,
-                                            i.elements["next"].text))
+                                            if i.elements["next"] then
+                                              i.elements["next"].text
+                                            else
+                                              nil
+                                            end))
       }
       conversations[id] = choice_list
     end

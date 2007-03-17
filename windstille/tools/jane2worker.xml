@@ -18,6 +18,16 @@
     </choice>
   </choice-list>
 
+  <choice-list id="c2">
+    <choice>
+      <text>Woops, sorry didn't noticed that, can I help you?</text>
+      <next>d3</next>
+    </choice>
+    <choice>
+      <text>I did I heard some crumble, or maybe not, lets search further.</text>
+    </choice>
+  </choice-list>
+
   <choice-list id="bobchoices">
     <choice>
       <text>Sure about that? You look just like him.</text>
@@ -60,8 +70,25 @@
       <name>Worker</name> 
       <text>Yeah, I am already, for most part at least, but as you can
         see the rubble keeps me trapped.</text>
+      <next>d2</next>
     </dialog>
+  </dialog-list>
 
+
+  <dialog-list id="d3">
+    <dialog>
+      <name>Jane</name>
+      <text>Woops, sorry didn't noticed that, can I help you?</text>
+    </dialog>
+    <dialog>
+      <name>Worker</name>
+      <text>Yes, as you can see I am trapped under all this rubble.</text>
+      <next>d2</next>
+    </dialog>
+   
+  </dialog-list>
+
+  <dialog-list id="d2">
     <dialog>
       <name>Jane</name>
       <text>Lets try to lift it then, doesn't seem to heavy.</text>
@@ -95,6 +122,12 @@
     <dialog>
       <name>Jane</name>
       <text>That one looks dead already, not a chance he survived that.</text>
+    </dialog>
+
+    <dialog>
+      <name>Worker</name>
+      <text>Hey, I am still alive and well, and well, trapped under all this rubble.</text>
+      <next>c2</next>
     </dialog>
   </dialog-list>
 

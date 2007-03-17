@@ -4,4 +4,7 @@ env = Environment()
 env.ParseConfig("pkg-config --cflags --libs libpng")
 env.Program('convert', ['convert.cpp'], CXXFLAGS = ['-Wall', '-O2', '-g'])
 
+env2 = Environment()
+env2.Program('vmtest', ['vmtest.cpp', 'virtual_machine.cpp'], CXXFLAGS=['-Wall', '-O0', '-g'])
+
 # EOF #
