@@ -1,0 +1,57 @@
+<dialog>
+  <choice-list id="start">
+    <choice>
+      <text>Can you here me?</text>
+    </choice>
+
+    <choice>
+      <text></text>
+    </choice>
+
+    <choice>
+      <text></text>
+    </choice>
+  </choice-list>
+
+  <dialog-list id="jane2worker">
+    <dialog>
+      <name>Jane</name>
+      <text>Can you here me? Are you already?</text>
+    </dialog>
+
+    <dialog>
+      <name>Worker</name> 
+      <text>Yeah, I am already, for most part at least, but as you can
+        see the rubble keeps me trapped.</text>
+    </dialog>
+
+    <dialog>
+      <name>Jane</name>
+      <text>Lets try to lift it then, doesn't seem to heavy.</text>
+    </dialog>
+
+    <dialog>
+      <name>Worker</name>
+
+      <text>Not a chance, just standard lightwight steam pipe stuff,
+        but heavily interconnected. We need a plasma cutter to free
+        it.</text>
+    </dialog>
+
+    <dialog>
+      <name>Jane</name>
+      <text>Plasma cutter, hm, wher could I find one down here?</text>
+    </dialog>
+
+    <dialog>
+      <name>Worker</name>
+      <text>To your left you fine a mine digger, that might have one its its tool box.</text>
+    </dialog>
+
+    <dialog>
+      <name>Jane</name>
+      <text>Ok, hold on, I'll be right back in a moment.</text>
+    </dialog>
+  </dialog-list>
+
+</dialog>
