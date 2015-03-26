@@ -17,4 +17,10 @@ A video of the game in action can be found on Youtube:
 The `roms/` directory contains precompiled NintendoDS roms. They will
 run on a NintendoDS emulator like `desmume`.
 
+Screenshots
+-----------
+
+![Screenshot 1](https://raw.githubusercontent.com/WindstilleTeam/windstille-nds/master/screenshot1.png)
+![Screenshot 2](https://raw.githubusercontent.com/WindstilleTeam/windstille-nds/master/screenshot2.png)
+
 [1] http://windstilleteam.github.io/
